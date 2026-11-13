@@ -1,5 +1,7 @@
 package edu.iit.cs513.adventure.game;
 
+import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.Set;
 
 /** Immutable ocean terrain shared by the player and enemy ships. */
@@ -43,5 +45,26 @@ public final class OceanMap {
 
     public boolean isNavigable(Position position) {
         return contains(position) && !isIsland(position);
+    }
+
+    /** Finds the water region accessible using the same four directions as the ships. */
+    Set<Position> reachableFrom(Position start) {
+        if (!isNavigable(start)) {
+            return Set.of();
+        }
+        Set<Position> visited = new HashSet<>();
+        ArrayDeque<Position> pending = new ArrayDeque<>();
+        visited.add(start);
+        pending.add(start);
+        while (!pending.isEmpty()) {
+            Position current = pending.remove();
+            for (Direction direction : Direction.values()) {
+                Position next = direction.moveFrom(current);
+                if (isNavigable(next) && visited.add(next)) {
+                    pending.add(next);
+                }
+            }
+        }
+        return Set.copyOf(visited);
     }
 }

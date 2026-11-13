@@ -3,6 +3,7 @@ package edu.iit.cs513.adventure.game;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -12,7 +13,7 @@ class GameTest {
     @Test
     void gameAutomaticallyRegistersAllPiratesAsObservers() {
         Game game = new Game(new OceanMap(6, 6, Set.of()), new Position(0, 0),
-                List.of(new Position(5, 0), new Position(0, 5)));
+                List.of(new Position(5, 0), new Position(0, 5)), new Position(5, 5));
 
         assertTrue(game.move(Direction.EAST));
         assertEquals(new Position(1, 0), game.getPlayerPosition());
@@ -32,8 +33,11 @@ class GameTest {
             assertEquals(2, game.getPiratePositions().size());
             Set<Position> spawns = new HashSet<>(game.getPiratePositions());
             spawns.add(game.getPlayerPosition());
-            assertEquals(3, spawns.size());
+            spawns.add(game.getTreasurePosition());
+            assertEquals(4, spawns.size());
             assertTrue(spawns.stream().allMatch(map::isNavigable));
+            assertTrue(reachableWater(map, game.getPlayerPosition()).containsAll(spawns));
+            assertEquals(GameState.PLAYING, game.getState());
         }
     }
 
@@ -45,6 +49,7 @@ class GameTest {
         assertEquals(first.getMap().getIslands(), second.getMap().getIslands());
         assertEquals(first.getPlayerPosition(), second.getPlayerPosition());
         assertEquals(first.getPiratePositions(), second.getPiratePositions());
+        assertEquals(first.getTreasurePosition(), second.getTreasurePosition());
         assertEquals(2, Game.newGame().getPiratePositions().size());
     }
 
@@ -54,8 +59,10 @@ class GameTest {
         Position player = new Position(0, 0);
         Position pirate = new Position(2, 2);
 
-        assertThrows(IllegalArgumentException.class, () -> new Game(map, player, List.of(player)));
-        assertThrows(IllegalArgumentException.class, () -> new Game(map, player, List.of(pirate, pirate)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Game(map, player, List.of(player), new Position(1, 0)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Game(map, player, List.of(pirate, pirate), new Position(1, 0)));
     }
 
     @Test
@@ -63,15 +70,15 @@ class GameTest {
         OceanMap map = new OceanMap(3, 3, Set.of(new Position(1, 1)));
 
         assertThrows(IllegalArgumentException.class,
-                () -> new Game(map, new Position(1, 1), List.of(new Position(2, 2))));
+                () -> new Game(map, new Position(1, 1), List.of(new Position(2, 2)), new Position(2, 0)));
         assertThrows(IllegalArgumentException.class,
-                () -> new Game(map, new Position(0, 0), List.of(new Position(3, 2))));
+                () -> new Game(map, new Position(0, 0), List.of(new Position(3, 2)), new Position(2, 0)));
     }
 
     @Test
     void returnedPiratePositionsAreImmutableSnapshots() {
         List<Position> starts = new ArrayList<>(List.of(new Position(4, 0)));
-        Game game = new Game(new OceanMap(5, 5, Set.of()), new Position(0, 0), starts);
+        Game game = new Game(new OceanMap(5, 5, Set.of()), new Position(0, 0), starts, new Position(4, 4));
         starts.clear();
         List<Position> snapshot = game.getPiratePositions();
 
@@ -80,5 +87,24 @@ class GameTest {
         assertEquals(List.of(new Position(4, 0)), snapshot);
         assertEquals(List.of(new Position(3, 0)), game.getPiratePositions());
         assertThrows(UnsupportedOperationException.class, snapshot::clear);
+    }
+
+    private static Set<Position> reachableWater(OceanMap map, Position start) {
+        Set<Position> visited = new HashSet<>();
+        ArrayDeque<Position> pending = new ArrayDeque<>();
+        visited.add(start);
+        pending.add(start);
+        while (!pending.isEmpty()) {
+            Position current = pending.remove();
+            for (Position next : List.of(new Position(current.x() - 1, current.y()),
+                    new Position(current.x() + 1, current.y()),
+                    new Position(current.x(), current.y() - 1),
+                    new Position(current.x(), current.y() + 1))) {
+                if (map.isNavigable(next) && visited.add(next)) {
+                    pending.add(next);
+                }
+            }
+        }
+        return visited;
     }
 }

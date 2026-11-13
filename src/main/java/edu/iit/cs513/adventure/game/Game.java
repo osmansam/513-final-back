@@ -19,10 +19,14 @@ public final class Game {
     private final OceanMap oceanMap;
     private final Ship player;
     private final List<PirateShip> pirates;
+    private final Position treasurePosition;
+    private GameState state = GameState.PLAYING;
+    private int turnCount;
 
-    /** Builds a specified layout, also usable by a future game design interface. */
-    public Game(OceanMap oceanMap, Position playerStart, List<Position> pirateStarts) {
+    /** Builds a layout with distinct spawns and treasure reachable from the player. */
+    public Game(OceanMap oceanMap, Position playerStart, List<Position> pirateStarts, Position treasurePosition) {
         this.oceanMap = Objects.requireNonNull(oceanMap);
+        this.treasurePosition = treasurePosition;
         player = new Ship(playerStart, oceanMap);
         Set<Position> occupied = new HashSet<>();
         occupied.add(playerStart);
@@ -34,6 +38,12 @@ public final class Game {
             ships.add(new PirateShip(start, oceanMap));
         }
         pirates = List.copyOf(ships);
+        if (!oceanMap.isNavigable(treasurePosition) || occupied.contains(treasurePosition)) {
+            throw new IllegalArgumentException("Treasure must start on a water cell separate from all ships");
+        }
+        if (!oceanMap.reachableFrom(playerStart).contains(treasurePosition)) {
+            throw new IllegalArgumentException("Treasure must be reachable from the player's starting cell");
+        }
         pirates.forEach(player::addObserver);
     }
 
@@ -53,13 +63,38 @@ public final class Game {
                 cells.add(new Position(x, y));
             }
         }
-        // Sampling without replacement guarantees distinct spawns and bounded generation time.
+        // Sampling without replacement guarantees distinct islands and bounded generation time.
         Collections.shuffle(cells, random);
-        Position playerStart = cells.getFirst();
-        List<Position> pirateStarts = cells.subList(1, 1 + PIRATE_COUNT);
-        Set<Position> islands = new HashSet<>(cells.subList(1 + PIRATE_COUNT,
-                1 + PIRATE_COUNT + ISLAND_COUNT));
-        return new Game(new OceanMap(DEFAULT_WIDTH, DEFAULT_HEIGHT, islands), playerStart, pirateStarts);
+        Set<Position> islands = new HashSet<>(cells.subList(0, ISLAND_COUNT));
+        OceanMap map = new OceanMap(DEFAULT_WIDTH, DEFAULT_HEIGHT, islands);
+        List<Position> spawns = connectedSpawnCells(map, cells);
+        if (spawns.size() < PIRATE_COUNT + 2) {
+            throw new IllegalStateException("The ocean needs a connected region large enough for all spawns");
+        }
+        return new Game(map, spawns.getFirst(), spawns.subList(1, 1 + PIRATE_COUNT),
+                spawns.get(1 + PIRATE_COUNT));
+    }
+
+    private static List<Position> connectedSpawnCells(OceanMap map, List<Position> cells) {
+        Set<Position> visited = new HashSet<>();
+        Set<Position> largestRegion = Set.of();
+        for (Position cell : cells) {
+            if (map.isNavigable(cell) && !visited.contains(cell)) {
+                Set<Position> region = map.reachableFrom(cell);
+                visited.addAll(region);
+                if (region.size() > largestRegion.size()) {
+                    largestRegion = region;
+                }
+            }
+        }
+        List<Position> spawns = new ArrayList<>();
+        // Keep the seeded shuffle order rather than the unspecified iteration order of a set.
+        for (Position cell : cells) {
+            if (largestRegion.contains(cell)) {
+                spawns.add(cell);
+            }
+        }
+        return spawns;
     }
 
     public OceanMap getMap() {
@@ -74,7 +109,33 @@ public final class Game {
         return pirates.stream().map(PirateShip::getPosition).toList();
     }
 
+    public Position getTreasurePosition() {
+        return treasurePosition;
+    }
+
+    public GameState getState() {
+        return state;
+    }
+
+    public int getTurnCount() {
+        return turnCount;
+    }
+
     public boolean move(Direction direction) {
-        return player.move(direction);
+        return state.move(this, Objects.requireNonNull(direction));
+    }
+
+    /** Called by the playing state; pirate observers react before the turn's outcome is resolved. */
+    boolean playTurn(Direction direction) {
+        if (!player.move(direction)) {
+            return false;
+        }
+        turnCount++;
+        if (pirates.stream().anyMatch(pirate -> pirate.getPosition().equals(player.getPosition()))) {
+            state = GameState.LOST;
+        } else if (player.getPosition().equals(treasurePosition)) {
+            state = GameState.WON;
+        }
+        return true;
     }
 }
