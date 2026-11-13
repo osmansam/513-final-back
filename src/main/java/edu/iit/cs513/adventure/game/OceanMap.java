@@ -2,6 +2,8 @@ package edu.iit.cs513.adventure.game;
 
 import java.util.ArrayDeque;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 /** Immutable ocean terrain shared by the player and enemy ships. */
@@ -66,5 +68,31 @@ public final class OceanMap {
             }
         }
         return Set.copyOf(visited);
+    }
+
+    /** Breadth-first search returns a single shortest-route step, or the start if no route exists. */
+    Position stepTowards(Position start, Position target) {
+        if (!isNavigable(start) || !isNavigable(target) || start.equals(target)) {
+            return start;
+        }
+        Map<Position, Position> firstSteps = new HashMap<>();
+        ArrayDeque<Position> pending = new ArrayDeque<>();
+        firstSteps.put(start, start);
+        pending.add(start);
+        while (!pending.isEmpty()) {
+            Position current = pending.remove();
+            for (Direction direction : Direction.values()) {
+                Position next = direction.moveFrom(current);
+                if (isNavigable(next) && !firstSteps.containsKey(next)) {
+                    Position firstStep = current.equals(start) ? next : firstSteps.get(current);
+                    if (next.equals(target)) {
+                        return firstStep;
+                    }
+                    firstSteps.put(next, firstStep);
+                    pending.add(next);
+                }
+            }
+        }
+        return start;
     }
 }

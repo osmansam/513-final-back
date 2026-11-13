@@ -4,14 +4,21 @@ import java.util.Objects;
 import java.util.Observable;
 import java.util.Observer;
 
-/** Observer-based pirate with Assignment 2's greedy chase and alternate-axis fallback. */
+/** Observes the player's position and delegates each move to an interchangeable strategy. */
 @SuppressWarnings("deprecation")
-public final class PirateShip implements Observer {
+public class PirateShip implements Observer {
     private final OceanMap oceanMap;
+    private final PirateMovementStrategy strategy;
     private Position position;
+    private Position previousTarget;
 
     public PirateShip(Position position, OceanMap oceanMap) {
+        this(position, oceanMap, new GreedyChaseStrategy());
+    }
+
+    public PirateShip(Position position, OceanMap oceanMap, PirateMovementStrategy strategy) {
         this.oceanMap = Objects.requireNonNull(oceanMap);
+        this.strategy = Objects.requireNonNull(strategy);
         if (!oceanMap.isNavigable(position)) {
             throw new IllegalArgumentException("Pirate must start on a water cell");
         }
@@ -25,31 +32,15 @@ public final class PirateShip implements Observer {
     @Override
     public void update(Observable source, Object location) {
         if (source instanceof Ship && location instanceof Position target) {
-            chase(target);
-        }
-    }
-
-    private void chase(Position target) {
-        int dx = target.x() - position.x();
-        int dy = target.y() - position.y();
-        if (Math.abs(dx) >= Math.abs(dy)) {
-            if (!tryMove(Integer.signum(dx), 0)) {
-                tryMove(0, Integer.signum(dy));
+            // Capture is immediate when the player sails onto a pirate's existing cell.
+            if (!position.equals(target)) {
+                Position next = strategy.nextPosition(position, target, previousTarget, oceanMap);
+                if (oceanMap.isNavigable(next)
+                        && Math.abs(next.x() - position.x()) + Math.abs(next.y() - position.y()) <= 1) {
+                    position = next;
+                }
             }
-        } else if (!tryMove(0, Integer.signum(dy))) {
-            tryMove(Integer.signum(dx), 0);
+            previousTarget = target;
         }
-    }
-
-    private boolean tryMove(int dx, int dy) {
-        if (dx == 0 && dy == 0) {
-            return false;
-        }
-        Position destination = new Position(position.x() + dx, position.y() + dy);
-        if (!oceanMap.isNavigable(destination)) {
-            return false;
-        }
-        position = destination;
-        return true;
     }
 }

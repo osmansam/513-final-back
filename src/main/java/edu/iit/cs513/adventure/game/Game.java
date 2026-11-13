@@ -14,28 +14,40 @@ public final class Game {
     private static final int DEFAULT_WIDTH = 20;
     private static final int DEFAULT_HEIGHT = 20;
     private static final int ISLAND_COUNT = 40;
-    private static final int PIRATE_COUNT = 2;
+    private static final List<PirateShipFactory> PIRATE_FACTORIES =
+            List.of(new HunterPirateFactory(), new InterceptorPirateFactory());
+    private static final int MONSTER_COUNT = 2;
 
     private final OceanMap oceanMap;
     private final Ship player;
     private final List<PirateShip> pirates;
+    private final List<SeaMonster> monsters;
     private final Position treasurePosition;
     private GameState state = GameState.PLAYING;
     private int turnCount;
 
     /** Builds a layout with distinct spawns and treasure reachable from the player. */
     public Game(OceanMap oceanMap, Position playerStart, List<Position> pirateStarts, Position treasurePosition) {
+        this(oceanMap, playerStart, pirateStarts, treasurePosition, List.of());
+    }
+
+    public Game(OceanMap oceanMap, Position playerStart, List<Position> pirateStarts,
+                Position treasurePosition, List<MonsterSpawn> monsterSpawns) {
+        this(oceanMap, playerStart, treasurePosition,
+                pirateStarts.stream().map(start -> new PirateShip(start, oceanMap)).toList(), monsterSpawns);
+    }
+
+    private Game(OceanMap oceanMap, Position playerStart, Position treasurePosition,
+                 List<PirateShip> ships, List<MonsterSpawn> monsterSpawns) {
         this.oceanMap = Objects.requireNonNull(oceanMap);
         this.treasurePosition = treasurePosition;
         player = new Ship(playerStart, oceanMap);
         Set<Position> occupied = new HashSet<>();
         occupied.add(playerStart);
-        List<PirateShip> ships = new ArrayList<>();
-        for (Position start : pirateStarts) {
-            if (!occupied.add(start)) {
+        for (PirateShip ship : ships) {
+            if (!occupied.add(ship.getPosition())) {
                 throw new IllegalArgumentException("Ships must start on distinct cells");
             }
-            ships.add(new PirateShip(start, oceanMap));
         }
         pirates = List.copyOf(ships);
         if (!oceanMap.isNavigable(treasurePosition) || occupied.contains(treasurePosition)) {
@@ -44,6 +56,15 @@ public final class Game {
         if (!oceanMap.reachableFrom(playerStart).contains(treasurePosition)) {
             throw new IllegalArgumentException("Treasure must be reachable from the player's starting cell");
         }
+        occupied.add(treasurePosition);
+        List<SeaMonster> creatures = new ArrayList<>();
+        for (MonsterSpawn spawn : monsterSpawns) {
+            if (!occupied.add(spawn.position())) {
+                throw new IllegalArgumentException("Monsters must start separate from ships, treasure, and other monsters");
+            }
+            creatures.add(new SeaMonster(spawn.position(), oceanMap, spawn.area()));
+        }
+        monsters = List.copyOf(creatures);
         pirates.forEach(player::addObserver);
     }
 
@@ -68,11 +89,22 @@ public final class Game {
         Set<Position> islands = new HashSet<>(cells.subList(0, ISLAND_COUNT));
         OceanMap map = new OceanMap(DEFAULT_WIDTH, DEFAULT_HEIGHT, islands);
         List<Position> spawns = connectedSpawnCells(map, cells);
-        if (spawns.size() < PIRATE_COUNT + 2) {
+        int pirateCount = PIRATE_FACTORIES.size();
+        if (spawns.size() < pirateCount + MONSTER_COUNT + 2) {
             throw new IllegalStateException("The ocean needs a connected region large enough for all spawns");
         }
-        return new Game(map, spawns.getFirst(), spawns.subList(1, 1 + PIRATE_COUNT),
-                spawns.get(1 + PIRATE_COUNT));
+        List<PirateShip> pirates = new ArrayList<>();
+        for (int index = 0; index < pirateCount; index++) {
+            pirates.add(PIRATE_FACTORIES.get(index).create(spawns.get(1 + index), map));
+        }
+        List<MonsterSpawn> monsters = new ArrayList<>();
+        for (int index = 0; index < MONSTER_COUNT; index++) {
+            Position start = spawns.get(pirateCount + 2 + index);
+            RoamingArea area = new RoamingArea(Math.max(0, start.x() - 2), Math.max(0, start.y() - 2),
+                    Math.min(map.getWidth() - 1, start.x() + 2), Math.min(map.getHeight() - 1, start.y() + 2));
+            monsters.add(new MonsterSpawn(start, area));
+        }
+        return new Game(map, spawns.getFirst(), spawns.get(pirateCount + 1), pirates, monsters);
     }
 
     private static List<Position> connectedSpawnCells(OceanMap map, List<Position> cells) {
@@ -109,6 +141,14 @@ public final class Game {
         return pirates.stream().map(PirateShip::getPosition).toList();
     }
 
+    public List<Position> getMonsterPositions() {
+        return monsters.stream().map(SeaMonster::getPosition).toList();
+    }
+
+    public List<RoamingArea> getMonsterAreas() {
+        return monsters.stream().map(SeaMonster::getArea).toList();
+    }
+
     public Position getTreasurePosition() {
         return treasurePosition;
     }
@@ -131,7 +171,14 @@ public final class Game {
             return false;
         }
         turnCount++;
-        if (pirates.stream().anyMatch(pirate -> pirate.getPosition().equals(player.getPosition()))) {
+        for (SeaMonster monster : monsters) {
+            // An existing collision must not be undone by a monster moving away.
+            if (!monster.getPosition().equals(player.getPosition())) {
+                monster.move();
+            }
+        }
+        if (pirates.stream().anyMatch(pirate -> pirate.getPosition().equals(player.getPosition()))
+                || monsters.stream().anyMatch(monster -> monster.getPosition().equals(player.getPosition()))) {
             state = GameState.LOST;
         } else if (player.getPosition().equals(treasurePosition)) {
             state = GameState.WON;

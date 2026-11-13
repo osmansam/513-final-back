@@ -31,10 +31,12 @@ class GameTest {
             assertEquals(20, map.getHeight());
             assertEquals(40, map.getIslands().size());
             assertEquals(2, game.getPiratePositions().size());
+            assertEquals(2, game.getMonsterPositions().size());
             Set<Position> spawns = new HashSet<>(game.getPiratePositions());
+            spawns.addAll(game.getMonsterPositions());
             spawns.add(game.getPlayerPosition());
             spawns.add(game.getTreasurePosition());
-            assertEquals(4, spawns.size());
+            assertEquals(6, spawns.size());
             assertTrue(spawns.stream().allMatch(map::isNavigable));
             assertTrue(reachableWater(map, game.getPlayerPosition()).containsAll(spawns));
             assertEquals(GameState.PLAYING, game.getState());
@@ -50,6 +52,8 @@ class GameTest {
         assertEquals(first.getPlayerPosition(), second.getPlayerPosition());
         assertEquals(first.getPiratePositions(), second.getPiratePositions());
         assertEquals(first.getTreasurePosition(), second.getTreasurePosition());
+        assertEquals(first.getMonsterPositions(), second.getMonsterPositions());
+        assertEquals(first.getMonsterAreas(), second.getMonsterAreas());
         assertEquals(2, Game.newGame().getPiratePositions().size());
     }
 
