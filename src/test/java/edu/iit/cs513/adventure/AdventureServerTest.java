@@ -54,7 +54,7 @@ class AdventureServerTest {
 
     @Test
     void unknownRouteReturnsJsonErrorWithCors() throws Exception {
-        HttpResponse<String> response = request("GET", "/api/games");
+        HttpResponse<String> response = request("GET", "/api/unknown");
 
         assertEquals(404, response.statusCode());
         assertEquals("{\"error\":\"Not found\"}", response.body());
