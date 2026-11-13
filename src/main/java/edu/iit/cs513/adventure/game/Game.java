@@ -2,6 +2,7 @@ package edu.iit.cs513.adventure.game;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -159,6 +160,24 @@ public final class Game {
 
     public int getTurnCount() {
         return turnCount;
+    }
+
+    /** Captures values in stable order; session callers hold the lock while this view is built. */
+    public GameSnapshot snapshot() {
+        List<Position> islands = oceanMap.getIslands().stream()
+                .sorted(Comparator.comparingInt(Position::y).thenComparingInt(Position::x)).toList();
+        List<PirateSnapshot> pirateViews = new ArrayList<>();
+        for (int index = 0; index < pirates.size(); index++) {
+            PirateShip pirate = pirates.get(index);
+            pirateViews.add(new PirateSnapshot("pirate-" + (index + 1), pirate.getType(), pirate.getPosition()));
+        }
+        List<MonsterSnapshot> monsterViews = new ArrayList<>();
+        for (int index = 0; index < monsters.size(); index++) {
+            SeaMonster monster = monsters.get(index);
+            monsterViews.add(new MonsterSnapshot("monster-" + (index + 1), monster.getPosition(), monster.getArea()));
+        }
+        return new GameSnapshot(oceanMap.getWidth(), oceanMap.getHeight(), islands, player.getPosition(),
+                treasurePosition, pirateViews, monsterViews, state, turnCount);
     }
 
     public boolean move(Direction direction) {

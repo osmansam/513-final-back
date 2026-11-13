@@ -29,6 +29,10 @@ public class PirateShip implements Observer {
         return position;
     }
 
+    public PirateType getType() {
+        return PirateType.STANDARD;
+    }
+
     @Override
     public void update(Observable source, Object location) {
         if (source instanceof Ship && location instanceof Position target) {
